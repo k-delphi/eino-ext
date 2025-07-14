@@ -85,7 +85,7 @@ type ChatModelConfig struct {
 	// Required
 	Model string `json:"model"`
 
-	// MaxTokens limits the maximum number of tokens that can be generated in the chat completion and the range of values is [0, 4096]
+	// MaxTokens limits the maximum number of tokens that can be generated in the chat completion.
 	// Optional. Default: 4096
 	MaxTokens *int `json:"max_tokens,omitempty"`
 
@@ -130,10 +130,15 @@ type ChatModelConfig struct {
 
 	// ResponseFormat specifies the format that the model must output.
 	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
+
+	// Thinking controls whether the model is set to activate the deep thinking mode.
+	// It is set to be enabled by default.
+	Thinking *model.Thinking `json:"thinking,omitempty"`
 }
 
 type ResponseFormat struct {
-	Type model.ResponseFormatType `json:"type"`
+	Type       model.ResponseFormatType                       `json:"type"`
+	JSONSchema *model.ResponseFormatJSONSchemaJSONSchemaParam `json:"json_schema,omitempty"`
 }
 
 func buildClient(config *ChatModelConfig) *arkruntime.Client {
@@ -260,9 +265,12 @@ func (cm *ChatModel) Generate(ctx context.Context, in []*schema.Message, opts ..
 		Tools:       nil,
 	}, opts...)
 
-	arkOpts := fmodel.GetImplSpecificOptions(&arkOptions{customHeaders: cm.config.CustomHeader}, opts...)
+	arkOpts := fmodel.GetImplSpecificOptions(&arkOptions{
+		customHeaders: cm.config.CustomHeader,
+		thinking:      cm.config.Thinking,
+	}, opts...)
 
-	req, err := cm.genRequest(in, options)
+	req, err := cm.genRequest(in, options, arkOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -330,9 +338,12 @@ func (cm *ChatModel) Stream(ctx context.Context, in []*schema.Message, opts ...f
 		Tools:       nil,
 	}, opts...)
 
-	arkOpts := fmodel.GetImplSpecificOptions(&arkOptions{customHeaders: cm.config.CustomHeader}, opts...)
+	arkOpts := fmodel.GetImplSpecificOptions(&arkOptions{
+		customHeaders: cm.config.CustomHeader,
+		thinking:      cm.config.Thinking,
+	}, opts...)
 
-	req, err := cm.genRequest(in, options)
+	req, err := cm.genRequest(in, options, arkOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -438,7 +449,7 @@ func (cm *ChatModel) Stream(ctx context.Context, in []*schema.Message, opts ...f
 	return outStream, nil
 }
 
-func (cm *ChatModel) genRequest(in []*schema.Message, options *fmodel.Options) (req *model.CreateChatCompletionRequest, err error) {
+func (cm *ChatModel) genRequest(in []*schema.Message, options *fmodel.Options, arkOpts *arkOptions) (req *model.CreateChatCompletionRequest, err error) {
 	req = &model.CreateChatCompletionRequest{
 		MaxTokens:        options.MaxTokens,
 		Temperature:      options.Temperature,
@@ -448,11 +459,13 @@ func (cm *ChatModel) genRequest(in []*schema.Message, options *fmodel.Options) (
 		FrequencyPenalty: cm.config.FrequencyPenalty,
 		LogitBias:        cm.config.LogitBias,
 		PresencePenalty:  cm.config.PresencePenalty,
+		Thinking:         arkOpts.thinking,
 	}
 
 	if cm.config.ResponseFormat != nil {
 		req.ResponseFormat = &model.ResponseFormat{
-			Type: cm.config.ResponseFormat.Type,
+			Type:       cm.config.ResponseFormat.Type,
+			JSONSchema: cm.config.ResponseFormat.JSONSchema,
 		}
 	}
 
@@ -469,12 +482,16 @@ func (cm *ChatModel) genRequest(in []*schema.Message, options *fmodel.Options) (
 			return req, e
 		}
 
-		req.Messages = append(req.Messages, &model.ChatCompletionMessage{
+		nMsg := &model.ChatCompletionMessage{
 			Content:    content,
 			Role:       string(msg.Role),
 			ToolCallID: msg.ToolCallID,
 			ToolCalls:  toArkToolCalls(msg.ToolCalls),
-		})
+		}
+		if len(msg.Name) > 0 {
+			nMsg.Name = &msg.Name
+		}
+		req.Messages = append(req.Messages, nMsg)
 	}
 
 	tools := cm.tools
@@ -573,17 +590,19 @@ func (cm *ChatModel) resolveChatResponse(resp model.ChatCompletionResponse) (msg
 			Usage:        toEinoTokenUsage(&resp.Usage),
 			LogProbs:     toLogProbs(choice.LogProbs),
 		},
-		Extra: map[string]any{
-			keyOfRequestID: arkRequestID(resp.ID),
-		},
+		Extra: map[string]any{},
 	}
+
+	setModelName(msg, resp.Model)
+	setArkRequestID(msg, resp.ID)
 
 	if content != nil && content.StringValue != nil {
 		msg.Content = *content.StringValue
 	}
 
 	if choice.Message.ReasoningContent != nil {
-		msg.Extra[keyOfReasoningContent] = *choice.Message.ReasoningContent
+		setReasoningContent(msg, *choice.Message.ReasoningContent)
+		msg.ReasoningContent = *choice.Message.ReasoningContent
 	}
 
 	return msg, nil
@@ -607,13 +626,12 @@ func resolveStreamResponse(resp model.ChatCompletionStreamResponse) (msg *schema
 					Usage:        toEinoTokenUsage(resp.Usage),
 					LogProbs:     toLogProbs(choice.LogProbs),
 				},
-				Extra: map[string]any{
-					keyOfRequestID: arkRequestID(resp.ID),
-				},
+				Extra: map[string]any{},
 			}
 
 			if choice.Delta.ReasoningContent != nil {
-				msg.Extra[keyOfReasoningContent] = *choice.Delta.ReasoningContent
+				setReasoningContent(msg, *choice.Delta.ReasoningContent)
+				msg.ReasoningContent = *choice.Delta.ReasoningContent
 			}
 
 			break
@@ -626,11 +644,11 @@ func resolveStreamResponse(resp model.ChatCompletionStreamResponse) (msg *schema
 			ResponseMeta: &schema.ResponseMeta{
 				Usage: toEinoTokenUsage(resp.Usage),
 			},
-			Extra: map[string]any{
-				keyOfRequestID: arkRequestID(resp.ID),
-			},
+			Extra: map[string]any{},
 		}
 	}
+	setArkRequestID(msg, resp.ID)
+	setModelName(msg, resp.Model)
 
 	return msg, msgFound, nil
 }
@@ -744,6 +762,17 @@ func toArkContent(content string, multiContent []schema.ChatMessagePart) (*model
 				ImageURL: &model.ChatMessageImageURL{
 					URL:    part.ImageURL.URL,
 					Detail: model.ImageURLDetail(part.ImageURL.Detail),
+				},
+			})
+		case schema.ChatMessagePartTypeVideoURL:
+			if part.VideoURL == nil {
+				return nil, fmt.Errorf("VideoURL field must not be nil when Type is ChatMessagePartTypeVideoURL")
+			}
+			parts = append(parts, &model.ChatCompletionMessageContentPart{
+				Type: model.ChatCompletionMessageContentPartTypeVideoURL,
+				VideoURL: &model.ChatMessageVideoURL{
+					URL: part.VideoURL.URL,
+					FPS: GetFPS(part.VideoURL),
 				},
 			})
 		default:

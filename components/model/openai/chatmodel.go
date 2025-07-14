@@ -30,6 +30,7 @@ import (
 )
 
 var _ model.ToolCallingChatModel = (*ChatModel)(nil)
+var _ model.ChatModel = (*ChatModel)(nil)
 
 type ChatModelConfig struct {
 	// APIKey is your authentication key
@@ -53,6 +54,11 @@ type ChatModelConfig struct {
 	// ByAzure indicates whether to use Azure OpenAI Service
 	// Required for Azure
 	ByAzure bool `json:"by_azure"`
+
+	// AzureModelMapperFunc is used to map the model name to the deployment name for Azure OpenAI Service.
+	// This is useful when the model name is different from the deployment name.
+	// Optional for Azure, remove [,:] from the model name by default.
+	AzureModelMapperFunc func(model string) string
 
 	// BaseURL is the Azure OpenAI endpoint URL
 	// Format: https://{YOUR_RESOURCE_NAME}.openai.azure.com. YOUR_RESOURCE_NAME is the name of your resource that you have created on Azure.
@@ -115,9 +121,11 @@ type ChatModelConfig struct {
 	// User unique identifier representing end-user
 	// Optional. Helps OpenAI monitor and detect abuse
 	User *string `json:"user,omitempty"`
-}
 
-var _ model.ChatModel = (*ChatModel)(nil)
+	// ExtraFields will override any existing fields with the same key.
+	// Optional. Useful for experimental features not yet officially supported.
+	ExtraFields map[string]any `json:"extra_fields,omitempty"`
+}
 
 type ChatModel struct {
 	cli *openai.Client
@@ -135,22 +143,24 @@ func NewChatModel(ctx context.Context, config *ChatModelConfig) (*ChatModel, err
 		}
 
 		nConf = &openai.Config{
-			ByAzure:          config.ByAzure,
-			BaseURL:          config.BaseURL,
-			APIVersion:       config.APIVersion,
-			APIKey:           config.APIKey,
-			HTTPClient:       httpClient,
-			Model:            config.Model,
-			MaxTokens:        config.MaxTokens,
-			Temperature:      config.Temperature,
-			TopP:             config.TopP,
-			Stop:             config.Stop,
-			PresencePenalty:  config.PresencePenalty,
-			ResponseFormat:   config.ResponseFormat,
-			Seed:             config.Seed,
-			FrequencyPenalty: config.FrequencyPenalty,
-			LogitBias:        config.LogitBias,
-			User:             config.User,
+			ByAzure:              config.ByAzure,
+			BaseURL:              config.BaseURL,
+			APIVersion:           config.APIVersion,
+			APIKey:               config.APIKey,
+			HTTPClient:           httpClient,
+			Model:                config.Model,
+			MaxTokens:            config.MaxTokens,
+			Temperature:          config.Temperature,
+			TopP:                 config.TopP,
+			Stop:                 config.Stop,
+			PresencePenalty:      config.PresencePenalty,
+			ResponseFormat:       config.ResponseFormat,
+			Seed:                 config.Seed,
+			FrequencyPenalty:     config.FrequencyPenalty,
+			LogitBias:            config.LogitBias,
+			User:                 config.User,
+			AzureModelMapperFunc: config.AzureModelMapperFunc,
+			ExtraFields:          config.ExtraFields,
 		}
 	}
 	cli, err := openai.NewClient(ctx, nConf)

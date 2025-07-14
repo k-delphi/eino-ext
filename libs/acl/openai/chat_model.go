@@ -74,6 +74,12 @@ type Config struct {
 	// Required for Azure
 	ByAzure bool `json:"by_azure"`
 
+
+	// AzureModelMapperFunc is used to map the model name to the deployment name for Azure OpenAI Service.
+	// This is useful when the model name is different from the deployment name.
+	// Optional for Azure, remove [,:] from the model name by default.
+	AzureModelMapperFunc func(model string) string
+
 	// BaseURL is the Azure OpenAI endpoint URL
 	// Format: https://{YOUR_RESOURCE_NAME}.openai.azure.com. YOUR_RESOURCE_NAME is the name of your resource that you have created on Azure.
 	// Required for Azure
@@ -141,6 +147,14 @@ type Config struct {
 
 	// TopLogProbs specifies the number of most likely tokens to return at each token position, each with an associated log probability.
 	TopLogProbs int `json:"top_log_probs"`
+
+	// ExtraFields will override any existing fields with the same key.
+	// Optional. Useful for experimental features not yet officially supported.
+	ExtraFields map[string]any `json:"-"`
+
+	// ReasoningEffort will override the default reasoning level of "medium"
+	// Optional. Useful for fine tuning response latency vs. accuracy
+	ReasoningEffort ReasoningEffortLevel
 }
 
 type Client struct {
@@ -163,6 +177,9 @@ func NewClient(ctx context.Context, config *Config) (*Client, error) {
 		clientConf = openai.DefaultAzureConfig(config.APIKey, config.BaseURL)
 		if config.APIVersion != "" {
 			clientConf.APIVersion = config.APIVersion
+		}
+		if config.AzureModelMapperFunc != nil {
+			clientConf.AzureModelMapperFunc = config.AzureModelMapperFunc
 		}
 	} else {
 		clientConf = openai.DefaultConfig(config.APIKey)
@@ -321,13 +338,17 @@ func (c *Client) genRequest(in []*schema.Message, opts ...model.Option) (*openai
 		Tools:       nil,
 		ToolChoice:  c.toolChoice,
 	}, opts...)
+	openaiOptions := model.GetImplSpecificOptions(&openaiOptions{
+		ExtraFields:     c.config.ExtraFields,
+		ReasoningEffort: c.config.ReasoningEffort,
+	}, opts...)
 
 	req := &openai.ChatCompletionRequest{
 		Model:            *options.Model,
 		MaxTokens:        dereferenceOrZero(options.MaxTokens),
 		Temperature:      options.Temperature,
 		TopP:             dereferenceOrZero(options.TopP),
-		Stop:             c.config.Stop,
+		Stop:             options.Stop,
 		PresencePenalty:  dereferenceOrZero(c.config.PresencePenalty),
 		Seed:             c.config.Seed,
 		FrequencyPenalty: dereferenceOrZero(c.config.FrequencyPenalty),
@@ -335,6 +356,11 @@ func (c *Client) genRequest(in []*schema.Message, opts ...model.Option) (*openai
 		User:             dereferenceOrZero(c.config.User),
 		LogProbs:         c.config.LogProbs,
 		TopLogProbs:      c.config.TopLogProbs,
+		ReasoningEffort:  string(openaiOptions.ReasoningEffort),
+	}
+
+	if len(openaiOptions.ExtraFields) > 0 {
+		req.SetExtraFields(openaiOptions.ExtraFields)
 	}
 
 	cbInput := &model.CallbackInput{
@@ -455,7 +481,7 @@ func (c *Client) Generate(ctx context.Context, in []*schema.Message, opts ...mod
 	if err != nil {
 		return nil, fmt.Errorf("failed to create chat completion request: %w", err)
 	}
-	
+
 	ctx = callbacks.OnStart(ctx, cbInput)
 	defer func() {
 		if err != nil {
@@ -489,6 +515,9 @@ func (c *Client) Generate(ctx context.Context, in []*schema.Message, opts ...mod
 				Usage:        toEinoTokenUsage(&resp.Usage),
 				LogProbs:     toLogProbs(choice.LogProbs),
 			},
+		}
+		if len(msg.ReasoningContent) > 0 {
+			setReasoningContent(outMsg, msg.ReasoningContent)
 		}
 
 		break
@@ -581,6 +610,7 @@ func (c *Client) Stream(ctx context.Context, in []*schema.Message,
 			// skip empty message
 			// when openai return parallel tool calls, first frame can be empty
 			// skip empty frame in stream, then stream first frame could know whether is tool call msg.
+			rc, ok := GetReasoningContent(msg)
 			if lastEmptyMsg != nil {
 				cMsg, cErr := schema.ConcatMessages([]*schema.Message{lastEmptyMsg, msg})
 				if cErr != nil {
@@ -591,7 +621,7 @@ func (c *Client) Stream(ctx context.Context, in []*schema.Message,
 				msg = cMsg
 			}
 
-			if msg.Content == "" && len(msg.ToolCalls) == 0 {
+			if msg.Content == "" && len(msg.ToolCalls) == 0 && !(ok && len(rc) > 0) {
 				lastEmptyMsg = msg
 				continue
 			}
@@ -713,6 +743,10 @@ func resolveStreamResponse(resp openai.ChatCompletionStreamResponse) (msg *schem
 				Usage:        toEinoTokenUsage(resp.Usage),
 				LogProbs:     toStreamProbs(choice.Logprobs),
 			},
+		}
+
+		if len(choice.Delta.ReasoningContent) > 0 {
+			setReasoningContent(msg, choice.Delta.ReasoningContent)
 		}
 
 		break
