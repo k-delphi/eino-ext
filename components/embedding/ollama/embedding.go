@@ -11,10 +11,11 @@ import (
 	"github.com/ollama/ollama/api"
 )
 
+// Set with env: os.Setenv("QIANFAN_ACCESS_KEY", "your_iam_ak") or with env file
+
 type Duration struct {
 	time.Duration
 }
-
 type EmbeddingConfig struct {
 	BaseURL    string                 `json:"base_url"`
 	Model      string                 `json:"model"`       // 必填，模型名称
@@ -48,7 +49,7 @@ func DefaultConfig() *EmbeddingConfig {
 
 func NewEmbedder(ctx context.Context, config *EmbeddingConfig) (*Embedder, error) {
 	if config == nil {
-		config = DefaultConfig() //默认
+		config = DefaultConfig()
 	}
 	baseURL, err := url.Parse(config.BaseURL)
 	if err != nil {
@@ -74,7 +75,6 @@ func NewEmbedder(ctx context.Context, config *EmbeddingConfig) (*Embedder, error
 
 func (e *Embedder) EmbedStrings(ctx context.Context, texts []string, opts ...embedding.Option) (
 	embeddings [][]float64, err error) {
-	// 调用 Ollama API 进行文本嵌入
 	embeddings = make([][]float64, len(texts))
 	for i, text := range texts {
 		resp, err := e.cli.cli.Embeddings(ctx, &api.EmbeddingRequest{
@@ -82,7 +82,6 @@ func (e *Embedder) EmbedStrings(ctx context.Context, texts []string, opts ...emb
 			Prompt:    text,
 			Options:   e.cli.config.Options,
 			KeepAlive: (*api.Duration)(e.cli.config.KeepAlive),
-			// Truncate: e.cli.config.Truncate,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to get embeddings: %w", err)
