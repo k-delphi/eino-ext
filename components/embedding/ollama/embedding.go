@@ -11,7 +11,7 @@ import (
 	"github.com/ollama/ollama/api"
 )
 
-// Set with env: os.Setenv("QIANFAN_ACCESS_KEY", "your_iam_ak") or with env file
+// Set with env: os.Setenv("OLLAMA_BASE_URL", "your_ollama_base_url") or with env file
 
 type Duration struct {
 	time.Duration
