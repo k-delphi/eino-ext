@@ -37,7 +37,7 @@ func (i *Indexer) Store(ctx context.Context, docs []*schema.Document, opts ...in
 	// Get common options and implementation-specific options
 	co := indexer.GetCommonOptions(&indexer.Options{
 		SubIndexes: nil,
-		Embedding:  i.conf.Embedder,
+		Embedding:  i.conf.Embedding,
 	}, opts...)
 	
 	io := indexer.GetImplSpecificOptions(&ImplOptions{}, opts...)

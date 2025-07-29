@@ -48,9 +48,9 @@ type IndexerConfig struct {
 	// It takes a slice of documents and a slice of vectors, and returns a slice of
 	// columns that can be inserted into the Milvus collection.
 	DocumentConverter DocumentConverter
-	// Embedder is the embedder to embed the documents.
+	// Embedding is the embedder to embed the documents.
 	// It is used to convert the document content into vectors.
-	Embedder embedding.Embedder
+	Embedding embedding.Embedder
 }
 
 // NewIndexerConfig creates a new IndexerConfig with the given Milvus client and collection name.
