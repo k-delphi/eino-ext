@@ -25,25 +25,28 @@ go get -u github.com/cloudwego/eino-ext/components/indexer/milvus
 参考 `examples/main.go`，创建 Milvus 客户端和 Indexer：
 
 ```go
+package main
+
 import (
-"context"
-"github.com/milvus-io/milvus/client/v2/milvusclient"
-"github.com/cloudwego/eino-ext/components/indexer/milvus"
+	"context"
+	
+	"github.com/cloudwego/eino-ext/components/indexer/milvus"
+	"github.com/milvus-io/milvus/client/v2/milvusclient"
 )
 
 func main() {
-ctx := context.Background()
-client, _ := milvusclient.New(ctx, &milvusclient.ClientConfig{
-// your Milvus server config
-})
-defer client.Close()
-indexer, _ := milvus.NewIndexer(ctx, &milvus.IndexerConfig{
-Client:   client,
-Dim:      yourVectorDim,
-Embedder: yourEmbedder,
-})
-// 存储文档
-ids, err := indexer.Store(ctx, docs)
+	ctx := context.Background()
+	client, _ := milvusclient.New(ctx, &milvusclient.ClientConfig{
+		// your Milvus server config
+	})
+	defer client.Close()
+	indexer, _ := milvus.NewIndexer(ctx, &milvus.IndexerConfig{
+		Client:   client,
+		Dim:      yourVectorDim,
+		Embedder: yourEmbedder,
+	})
+	// 存储文档
+	ids, err := indexer.Store(ctx, docs)
 }
 ```
 

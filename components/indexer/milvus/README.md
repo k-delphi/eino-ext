@@ -23,25 +23,28 @@ go get -u github.com/cloudwego/eino-ext/components/indexer/milvus
 Refer to `examples/main.go` to create a Milvus client and Indexer:
 
 ```go
+package main
+
 import (
-"context"
-"github.com/milvus-io/milvus/client/v2/milvusclient"
-"github.com/cloudwego/eino-ext/components/indexer/milvus"
+	"context"
+	
+	"github.com/cloudwego/eino-ext/components/indexer/milvus"
+	"github.com/milvus-io/milvus/client/v2/milvusclient"
 )
 
 func main() {
-ctx := context.Background()
-client, _ := milvusclient.New(ctx, &milvusclient.ClientConfig{
-Address: "your-milvus-address",
-APIKey:  "your-api-key",
-})
-indexer, _ := milvus.NewIndexer(ctx, &milvus.IndexerConfig{
-Client:   client,
-Dim:      2560,
-Embedder: yourEmbedder, // Implements embedding.Embedder interface
-})
-// Store documents
-ids, err := indexer.Store(ctx, docs)
+	ctx := context.Background()
+	client, _ := milvusclient.New(ctx, &milvusclient.ClientConfig{
+		Address: "your-milvus-address",
+		APIKey:  "your-api-key",
+	})
+	indexer, _ := milvus.NewIndexer(ctx, &milvus.IndexerConfig{
+		Client:    client,
+		Dim:       2560,
+		Embedding: yourEmbedder, // Implements embedding.Embedder interface
+	})
+	// Store documents
+	ids, err := indexer.Store(ctx, docs)
 }
 ```
 

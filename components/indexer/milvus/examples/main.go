@@ -33,8 +33,8 @@ func main() {
 	// Create the milvus client
 	ctx := context.Background()
 	client, err := milvusclient.New(ctx, &milvusclient.ClientConfig{
-		Address: "https://in03-594505991139561.serverless.gcp-us-west1.cloud.zilliz.com",
-		APIKey:  "dd6d4107e283fad25aa5892a7a3746a0698f35736d10e83dcac9f0746fe1b31c0bf024bea5d997ed0a44224e92ae5adfdf5e773b",
+		Address: os.Getenv("MILVUS_ADDRESS"),
+		APIKey:  os.Getenv("MILVUS_API_KEY"),
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -44,9 +44,9 @@ func main() {
 	
 	// Create the indexer
 	indexer, err := milvus.NewIndexer(ctx, &milvus.IndexerConfig{
-		Client:   client,
-		Dim:      2560,
-		Embedder: &mockEmbedding{},
+		Client:    client,
+		Dim:       2560,
+		Embedding: &mockEmbedding{},
 	})
 	if err != nil {
 		log.Fatal(err)
