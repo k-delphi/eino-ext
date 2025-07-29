@@ -25,6 +25,7 @@ import (
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
 )
 
+// IndexerConfig is the configuration for the Milvus indexer.
 type IndexerConfig struct {
 	// Client is the Milvus client to connect to the Milvus server.
 	// It is required to create a new indexer.
@@ -53,13 +54,14 @@ type IndexerConfig struct {
 	Embedding embedding.Embedder
 }
 
-// NewIndexerConfig creates a new IndexerConfig with the given Milvus client and collection name.
-func (i *IndexerConfig) check() error {
+// validate validates the IndexerConfig.
+// It checks if the Milvus client is not nil, the dimension is greater than 0
+func (i *IndexerConfig) validate() error {
 	if i.Client == nil {
-		return fmt.Errorf("[IndexerConfig.check] the milvus client is nil")
+		return fmt.Errorf("[IndexerConfig.validate] the milvus client is nil")
 	}
 	if i.Dim <= 0 {
-		return fmt.Errorf("[IndexerConfig.check] the dimension of the vector must be greater than 0")
+		return fmt.Errorf("[IndexerConfig.validate] the dimension of the vector must be greater than 0")
 	}
 	if i.DocumentConverter == nil {
 		i.DocumentConverter = defaultDocumentConverter
@@ -77,7 +79,7 @@ func (i *IndexerConfig) check() error {
 func (i *IndexerConfig) ensureCollation(ctx context.Context) error {
 	ok, err := i.Client.HasCollection(ctx, milvusclient.NewHasCollectionOption(i.Collection))
 	if err != nil {
-		return fmt.Errorf("[Indexer.NewIndexer] failed to check collection: %w", err)
+		return fmt.Errorf("[Indexer.NewIndexer] failed to validate collection: %w", err)
 	}
 	
 	if !ok {

@@ -28,6 +28,7 @@ import (
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
 )
 
+// Indexer is a Milvus indexer that implements the indexer.Indexer interface.
 type Indexer struct {
 	conf *IndexerConfig
 }
@@ -117,8 +118,8 @@ func (i *Indexer) GetType() string {
 
 // NewIndexer creates a new Milvus indexer with the given configuration.
 func NewIndexer(ctx context.Context, conf *IndexerConfig) (*Indexer, error) {
-	// check the configuration
-	if err := conf.check(); err != nil {
+	// validate the configuration
+	if err := conf.validate(); err != nil {
 		return nil, fmt.Errorf("[Indexer.NewIndexer] invalid indexer config: %w", err)
 	}
 	
